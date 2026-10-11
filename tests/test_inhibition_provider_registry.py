@@ -174,13 +174,13 @@ def test_unregister_is_idempotent(api: VThermAPI) -> None:
 
 def test_reset_clears_inhibition_registry() -> None:
     VThermAPI.reset_vtherm_api()
-    hass = _build_hass()
-    api = VThermAPI.get_vtherm_api(hass)
+    api = VThermAPI.get_vtherm_api(_build_hass())
     api.register_inhibition_provider_factory(FakeInhibitionProviderFactory("inhibit"))
 
     VThermAPI.reset_vtherm_api()
-    api = VThermAPI.get_vtherm_api(_build_hass())
+    # The old instance may still be referenced by a plugin: it must be empty too.
     assert api.list_inhibition_provider_factories() == []
+    assert VThermAPI.get_vtherm_api(_build_hass()).list_inhibition_provider_factories() == []
     VThermAPI.reset_vtherm_api()
 
 
