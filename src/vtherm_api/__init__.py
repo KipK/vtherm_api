@@ -12,12 +12,14 @@ from .interfaces import (
 )
 from .inhibition import (
     DEFAULT_INHIBITION_STOP_POLICY,
+    InhibitionThermostatView,
     InhibitionStatus,
     InhibitionStopPolicy,
     InhibitionTransition,
     InhibitionTransitionCallback,
     InterfaceInhibitionProvider,
     InterfaceInhibitionProviderFactory,
+    InterfaceInhibitionThermostatView,
 )
 from .log_collector import (
     VThermLogEntry,
@@ -34,6 +36,7 @@ __version__ = "0.6.0"
 
 __all__ = [
     "DEFAULT_INHIBITION_STOP_POLICY",
+    "InhibitionThermostatView",
     "InhibitionStatus",
     "InhibitionStopPolicy",
     "InhibitionTransition",
@@ -43,6 +46,7 @@ __all__ = [
     "InterfaceFeatureManagerFactory",
     "InterfaceInhibitionProvider",
     "InterfaceInhibitionProviderFactory",
+    "InterfaceInhibitionThermostatView",
     "InterfacePropAlgorithmFactory",
     "InterfacePropAlgorithmHandler",
     "InterfaceThermostat",

@@ -17,7 +17,7 @@ Get or create the singleton instance.
 
 #### `VThermAPI.reset_vtherm_api() -> None`
 
-Reset the singleton and clear both the proportional algorithm registry and the feature manager factory registry.
+Reset the singleton and clear the proportional algorithm, feature-manager factory, and inhibition-provider factory registries.
 Mainly useful in tests.
 
 ### Properties
@@ -81,7 +81,7 @@ Registers an inhibition provider factory (issue #2087). Unlike the other registr
 
 #### `unregister_inhibition_provider_factory(name: str) -> None`
 
-Removes a factory; unknown names are ignored. Already-attached providers are stopped by their plugin (`stop_listening()` reports `UNKNOWN` first).
+Removes a factory; unknown names are ignored. Before unregistering, the core and plugin must await `provider.async_stop_listening()` for every attached provider. This delivers `UNKNOWN` to the core before its callback is detached and prevents an unsafe resume.
 
 #### `get_inhibition_provider_factory(name: str) -> InterfaceInhibitionProviderFactory | None`
 
@@ -391,24 +391,25 @@ Module `vtherm_api.inhibition`, all names re-exported from `vtherm_api`.
 
 A plugin detects an external condition and reports a **confirmed** status per VTherm. While the status is `ACTIVE`, or an attached provider is `UNKNOWN`, the VTherm core withdraws control of its underlyings: effective HVAC `OFF` (reason `hvac_off_inhibition`), no regulation, TPI or repair, and at most one physical stop on entry, only with policy `TURN_OFF`. On a confirmed `INACTIVE`, the core reconciles once from the current requested state. The provider never commands the VTherm or its underlyings.
 
-| Name | Kind | Values / members |
-|---|---|---|
-| `InhibitionStatus` | `StrEnum` | `ACTIVE="active"`, `INACTIVE="inactive"`, `UNKNOWN="unknown"` |
-| `InhibitionStopPolicy` | `StrEnum` | `TURN_OFF="turn_off"` (default, safe fallback), `DO_NOT_TURN_OFF="do_not_turn_off"` |
-| `DEFAULT_INHIBITION_STOP_POLICY` | constant | `InhibitionStopPolicy.TURN_OFF` |
-| `InhibitionTransition` | frozen dataclass | `provider_name`, `new_status`, `old_status`, `stop_policy`, `timestamp`, `sequence` |
-| `InhibitionTransitionCallback` | type | `Callable[[InhibitionTransition], Awaitable[None]]` |
+| Name                             | Kind             | Values / members                                                                    |
+| -------------------------------- | ---------------- | ----------------------------------------------------------------------------------- |
+| `InhibitionStatus`               | `StrEnum`        | `ACTIVE="active"`, `INACTIVE="inactive"`, `UNKNOWN="unknown"`                       |
+| `InhibitionStopPolicy`           | `StrEnum`        | `TURN_OFF="turn_off"` (default, safe fallback), `DO_NOT_TURN_OFF="do_not_turn_off"` |
+| `DEFAULT_INHIBITION_STOP_POLICY` | constant         | `InhibitionStopPolicy.TURN_OFF`                                                     |
+| `InhibitionTransition`           | frozen dataclass | `provider_name`, `new_status`, `old_status`, `stop_policy`, `timestamp`, `sequence` |
+| `InhibitionTransitionCallback`   | type             | `Callable[[InhibitionTransition], Awaitable[None]]`                                 |
+| `InhibitionThermostatView`       | frozen dataclass | `entity_id`, `name`, `unique_id` only; no VTherm command methods                    |
 
 #### InterfaceInhibitionProviderFactory
 
 - `name -> str`: stable, non-empty.
-- `supports(thermostat: InterfaceThermostatRuntime) -> bool`: pure and synchronous. An exception is a failing candidate (logged, VTherm `UNKNOWN`), never a silent `False`.
+- `supports(thermostat: InterfaceInhibitionThermostatView) -> bool`: pure and synchronous. The core must pass an `InhibitionThermostatView`, not the full VTherm runtime. An exception is a failing candidate (logged, VTherm `UNKNOWN`), never a silent `False`.
 - `create(thermostat) -> InterfaceInhibitionProvider`: one provider bound to one VTherm.
 
 #### InterfaceInhibitionProvider
 
 - `name`, `status`, `physical_stop_policy` (properties).
-- `post_init(entry_infos)`, `async_start_listening()`, `stop_listening()`, `restore_state(old_state)`.
+- `post_init(entry_infos)`, `async_start_listening()`, `async_stop_listening()`, `restore_state(old_state)`.
 - `async_refresh_state() -> InhibitionStatus`: re-evaluate and return the confirmed status.
 - `register_transition_callback(callback) -> CALLBACK_TYPE`: returns the remover.
 
@@ -416,5 +417,5 @@ Rules for providers:
 
 - publish only confirmed states, after the plugin's own delays; never a raw value or a running debounce;
 - never convert `UNKNOWN` into `ACTIVE` or `INACTIVE`;
-- `stop_listening()` reports `UNKNOWN` to the callbacks before detaching them;
+- `async_stop_listening()` reports `UNKNOWN` to and awaits every callback before detaching them; the core must await it before unregistering the factory or its callback;
 - `physical_stop_policy` returns `TURN_OFF` when the option is unset or invalid.

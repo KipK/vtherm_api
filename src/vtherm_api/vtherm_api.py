@@ -161,25 +161,31 @@ class VThermAPI:
             raise ValueError("The inhibition provider factory cannot be None")
         name = (factory.name or "").strip()
         if not name:
-            raise ValueError("The inhibition provider factory name cannot be empty")
+            raise ValueError(
+                "The inhibition provider factory name cannot be empty")
 
         existing = self._inhibition_provider_registry.get(name)
         if existing is factory:
             return
         if existing is not None:
-            raise ValueError(f"An inhibition provider factory named '{name}' is already registered")
+            raise ValueError(
+                f"An inhibition provider factory named '{name}' is already registered")
 
         self._inhibition_provider_registry[name] = factory
-        _LOGGER.info("%s - inhibition provider factory '%s' registered", self.name, name)
+        _LOGGER.info(
+            "%s - inhibition provider factory '%s' registered", self.name, name)
 
     def unregister_inhibition_provider_factory(self, name: str) -> None:
         """Remove an inhibition provider factory. Unknown names are ignored.
 
-        Providers already attached to a VTherm are not touched here: the
-        plugin stops them (``stop_listening`` reports ``UNKNOWN`` first).
+        The plugin and core must await ``async_stop_listening`` for every
+        attached provider before calling this method. That delivers ``UNKNOWN``
+        to the core before its callback is detached and prevents an unsafe
+        implicit resume.
         """
         if self._inhibition_provider_registry.pop((name or "").strip(), None) is not None:
-            _LOGGER.info("%s - inhibition provider factory '%s' unregistered", self.name, name)
+            _LOGGER.info(
+                "%s - inhibition provider factory '%s' unregistered", self.name, name)
 
     def get_inhibition_provider_factory(self, name: str) -> InterfaceInhibitionProviderFactory | None:
         """Return the inhibition provider factory registered under a name."""

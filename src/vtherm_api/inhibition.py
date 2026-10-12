@@ -13,6 +13,8 @@ the requested state. Detection, delays, bypass and configuration stay in the
 plugin; the core only consumes the confirmed status and the policy.
 """
 
+# pylint: disable=unnecessary-ellipsis
+
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
@@ -24,7 +26,54 @@ from typing import Any, Protocol, runtime_checkable
 from homeassistant.core import CALLBACK_TYPE
 
 from .commons_type import ConfigData
-from .interfaces import InterfaceThermostatRuntime
+
+
+@runtime_checkable
+class InterfaceInhibitionThermostatView(Protocol):
+    """Read-only VTherm information available to an inhibition factory.
+
+    The core must pass a restricted snapshot implementing this protocol, not
+    the full thermostat runtime. This keeps provider selection and creation
+    unable to issue HVAC, underlying-device, TPI, or repair commands.
+    """
+
+    @property
+    def entity_id(self) -> str:
+        """Return the thermostat entity identifier."""
+        ...
+
+    @property
+    def name(self) -> str:
+        """Return the thermostat name."""
+        ...
+
+    @property
+    def unique_id(self) -> str:
+        """Return the thermostat unique identifier."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class InhibitionThermostatView:
+    """Immutable identity snapshot passed from the core to an inhibition factory.
+
+    The core creates this view from the full thermostat object and must not pass
+    that full runtime to a factory. Provider-specific configuration is supplied
+    later through :meth:`InterfaceInhibitionProvider.post_init`.
+    """
+
+    entity_id: str
+    name: str
+    unique_id: str
+
+    @classmethod
+    def from_thermostat(cls, thermostat: InterfaceInhibitionThermostatView) -> "InhibitionThermostatView":
+        """Capture the factory-visible identity from a thermostat runtime."""
+        return cls(
+            entity_id=thermostat.entity_id,
+            name=thermostat.name,
+            unique_id=thermostat.unique_id,
+        )
 
 
 class InhibitionStatus(StrEnum):
@@ -72,7 +121,8 @@ class InhibitionTransition:
     sequence: int = 0
 
 
-InhibitionTransitionCallback = Callable[[InhibitionTransition], Awaitable[None]]
+InhibitionTransitionCallback = Callable[[
+    InhibitionTransition], Awaitable[None]]
 
 
 @runtime_checkable
@@ -80,9 +130,11 @@ class InterfaceInhibitionProvider(Protocol):
     """Provider bound to exactly one VTherm.
 
     Only confirmed states are published: a raw input or a running debounce
-    timer is never reported as a transition. ``stop_listening`` must report
-    ``UNKNOWN`` to the registered callbacks before detaching them, so the core
-    never treats a vanished provider as ``INACTIVE``.
+    timer is never reported as a transition. ``async_stop_listening`` must
+    report ``UNKNOWN`` to, and await, the registered callbacks before detaching
+    them. The core must await this method before removing its callback or
+    unregistering the provider factory, so it never treats a vanished provider
+    as ``INACTIVE``.
     """
 
     @property
@@ -108,8 +160,8 @@ class InterfaceInhibitionProvider(Protocol):
         """Subscribe to the provider sources."""
         ...
 
-    def stop_listening(self) -> None:
-        """Unsubscribe; report ``UNKNOWN`` to the callbacks first."""
+    async def async_stop_listening(self) -> None:
+        """Await ``UNKNOWN`` delivery, then unsubscribe from provider sources."""
         ...
 
     def restore_state(self, old_state: Any) -> None:
@@ -137,7 +189,7 @@ class InterfaceInhibitionProviderFactory(Protocol):
         """Stable, non-empty factory name."""
         ...
 
-    def supports(self, thermostat: InterfaceThermostatRuntime) -> bool:
+    def supports(self, thermostat: InterfaceInhibitionThermostatView) -> bool:
         """Return True when this factory wants to attach a provider to the VTherm.
 
         Pure and synchronous, no Home Assistant side effect. An exception is
@@ -145,6 +197,6 @@ class InterfaceInhibitionProviderFactory(Protocol):
         """
         ...
 
-    def create(self, thermostat: InterfaceThermostatRuntime) -> InterfaceInhibitionProvider:
+    def create(self, thermostat: InterfaceInhibitionThermostatView) -> InterfaceInhibitionProvider:
         """Create the provider bound to the VTherm."""
         ...
