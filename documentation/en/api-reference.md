@@ -71,6 +71,28 @@ Return registered feature manager factory names in sorted order.
 Return the registered feature manager factories, sorted by name.
 The core iterates over these factories when building a thermostat to instantiate one feature manager per eligible thermostat.
 
+#### `register_inhibition_provider_factory(factory: InterfaceInhibitionProviderFactory) -> None`
+
+Registers an inhibition provider factory (issue #2087). Unlike the other registries:
+
+- a name already registered by **another** factory raises `ValueError` (no silent replacement);
+- registering the same factory object again is a no-op;
+- registration order is kept, because the core attaches the **first** eligible factory to a VTherm and reports later eligible ones as a conflict.
+
+#### `unregister_inhibition_provider_factory(name: str) -> None`
+
+Removes a factory; unknown names are ignored. Already-attached providers are stopped by their plugin (`stop_listening()` reports `UNKNOWN` first).
+
+#### `get_inhibition_provider_factory(name: str) -> InterfaceInhibitionProviderFactory | None`
+
+#### `list_inhibition_provider_factories() -> list[str]`
+
+Names in registration order.
+
+#### `get_inhibition_provider_factories() -> list[InterfaceInhibitionProviderFactory]`
+
+Factories in registration order; the core iterates over them for each VTherm.
+
 #### `link_to_vtherm(vtherm, plugin_vtherm_entity_id: str) -> None`
 
 Search the Home Assistant climate component for a plugin climate entity matching `plugin_vtherm_entity_id`, then call `plugin.link_to_vtherm(vtherm)`.
@@ -361,3 +383,38 @@ _LOGGER = get_vtherm_logger(__name__)
 
 write_event_log(_LOGGER, thermostat, "auto_fan set to high")
 ```
+
+
+### Inhibition (issue #2087)
+
+Module `vtherm_api.inhibition`, all names re-exported from `vtherm_api`.
+
+A plugin detects an external condition and reports a **confirmed** status per VTherm. While the status is `ACTIVE`, or an attached provider is `UNKNOWN`, the VTherm core withdraws control of its underlyings: effective HVAC `OFF` (reason `hvac_off_inhibition`), no regulation, TPI or repair, and at most one physical stop on entry, only with policy `TURN_OFF`. On a confirmed `INACTIVE`, the core reconciles once from the current requested state. The provider never commands the VTherm or its underlyings.
+
+| Name | Kind | Values / members |
+|---|---|---|
+| `InhibitionStatus` | `StrEnum` | `ACTIVE="active"`, `INACTIVE="inactive"`, `UNKNOWN="unknown"` |
+| `InhibitionStopPolicy` | `StrEnum` | `TURN_OFF="turn_off"` (default, safe fallback), `DO_NOT_TURN_OFF="do_not_turn_off"` |
+| `DEFAULT_INHIBITION_STOP_POLICY` | constant | `InhibitionStopPolicy.TURN_OFF` |
+| `InhibitionTransition` | frozen dataclass | `provider_name`, `new_status`, `old_status`, `stop_policy`, `timestamp`, `sequence` |
+| `InhibitionTransitionCallback` | type | `Callable[[InhibitionTransition], Awaitable[None]]` |
+
+#### InterfaceInhibitionProviderFactory
+
+- `name -> str`: stable, non-empty.
+- `supports(thermostat: InterfaceThermostatRuntime) -> bool`: pure and synchronous. An exception is a failing candidate (logged, VTherm `UNKNOWN`), never a silent `False`.
+- `create(thermostat) -> InterfaceInhibitionProvider`: one provider bound to one VTherm.
+
+#### InterfaceInhibitionProvider
+
+- `name`, `status`, `physical_stop_policy` (properties).
+- `post_init(entry_infos)`, `async_start_listening()`, `stop_listening()`, `restore_state(old_state)`.
+- `async_refresh_state() -> InhibitionStatus`: re-evaluate and return the confirmed status.
+- `register_transition_callback(callback) -> CALLBACK_TYPE`: returns the remover.
+
+Rules for providers:
+
+- publish only confirmed states, after the plugin's own delays; never a raw value or a running debounce;
+- never convert `UNKNOWN` into `ACTIVE` or `INACTIVE`;
+- `stop_listening()` reports `UNKNOWN` to the callbacks before detaching them;
+- `physical_stop_policy` returns `TURN_OFF` when the option is unset or invalid.

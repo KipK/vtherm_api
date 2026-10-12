@@ -7,6 +7,7 @@ This package currently exposes two main building blocks:
 - `VThermAPI`: a singleton stored in `hass.data` that gives an integration access to the Home Assistant runtime, the proportional algorithm registry, feature-manager registration, and optional plugin-climate linking helpers.
 - `PluginClimate`: an event-driven helper that subscribes to Versatile Thermostat events for one linked thermostat and forwards service calls back to that thermostat.
 - A proportional algorithm plugin surface: runtime protocols plus a registry that lets an external integration register a proportional control handler by name.
+- An inhibition provider surface (issue #2087): `InterfaceInhibitionProvider` / `InterfaceInhibitionProviderFactory`, a three-state `InhibitionStatus` and an `InhibitionStopPolicy`, registered through `VThermAPI.register_inhibition_provider_factory(...)`. A plugin reports when another device takes over a room; the VTherm core then withdraws control of its underlyings until the plugin confirms the end. See [the API reference](documentation/en/api-reference.md#inhibition-issue-2087).
 
 The package is designed for Home Assistant integration code, not as a standalone HTTP or REST API.
 

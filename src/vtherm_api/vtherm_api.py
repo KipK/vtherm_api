@@ -13,6 +13,7 @@ from .interfaces import (
     InterfacePropAlgorithmFactory,
     InterfaceThermostat,
 )
+from .inhibition import InterfaceInhibitionProviderFactory
 
 _LOGGER = get_vtherm_logger(__name__)
 
@@ -32,6 +33,10 @@ class VThermAPI:
                                             InterfacePropAlgorithmFactory] = {}
         self._feature_manager_registry: dict[str,
                                              InterfaceFeatureManagerFactory] = {}
+        # Registration order matters (first eligible factory wins), so this
+        # registry is never sorted, unlike the other ones.
+        self._inhibition_provider_registry: dict[str,
+                                                 InterfaceInhibitionProviderFactory] = {}
 
     @classmethod
     def get_vtherm_api(cls, hass=None):
@@ -64,6 +69,7 @@ class VThermAPI:
         if api is not None:
             api._prop_algorithm_registry.clear()  # pylint: disable=protected-access
             api._feature_manager_registry.clear()  # pylint: disable=protected-access
+            api._inhibition_provider_registry.clear()  # pylint: disable=protected-access
 
         # Remove the API instance from hass.data
         if DOMAIN in cls._hass.data:
@@ -143,6 +149,53 @@ class VThermAPI:
             self._feature_manager_registry[name]
             for name in sorted(self._feature_manager_registry)
         ]
+
+    def register_inhibition_provider_factory(self, factory: InterfaceInhibitionProviderFactory) -> None:
+        """Register an inhibition provider factory (issue #2087).
+
+        Unlike the other registries, a name already registered by another
+        factory is refused instead of silently replaced. Registering the same
+        factory object again is a no-op.
+        """
+        if factory is None:
+            raise ValueError("The inhibition provider factory cannot be None")
+        name = (factory.name or "").strip()
+        if not name:
+            raise ValueError("The inhibition provider factory name cannot be empty")
+
+        existing = self._inhibition_provider_registry.get(name)
+        if existing is factory:
+            return
+        if existing is not None:
+            raise ValueError(f"An inhibition provider factory named '{name}' is already registered")
+
+        self._inhibition_provider_registry[name] = factory
+        _LOGGER.info("%s - inhibition provider factory '%s' registered", self.name, name)
+
+    def unregister_inhibition_provider_factory(self, name: str) -> None:
+        """Remove an inhibition provider factory. Unknown names are ignored.
+
+        Providers already attached to a VTherm are not touched here: the
+        plugin stops them (``stop_listening`` reports ``UNKNOWN`` first).
+        """
+        if self._inhibition_provider_registry.pop((name or "").strip(), None) is not None:
+            _LOGGER.info("%s - inhibition provider factory '%s' unregistered", self.name, name)
+
+    def get_inhibition_provider_factory(self, name: str) -> InterfaceInhibitionProviderFactory | None:
+        """Return the inhibition provider factory registered under a name."""
+        return self._inhibition_provider_registry.get(name)
+
+    def list_inhibition_provider_factories(self) -> list[str]:
+        """Return the registered inhibition provider names, in registration order."""
+        return list(self._inhibition_provider_registry)
+
+    def get_inhibition_provider_factories(self) -> list[InterfaceInhibitionProviderFactory]:
+        """Return the inhibition provider factories in registration order.
+
+        The core keeps the first eligible factory for a VTherm and reports the
+        later eligible ones as a conflict.
+        """
+        return list(self._inhibition_provider_registry.values())
 
     def link_to_vtherm(self, vtherm, plugin_vtherm_entity_id: str):
         """Link the VTherm API to a specific VTherm entity."""

@@ -10,7 +10,7 @@ Add `vtherm_api` as a dependency in your integration's `manifest.json`:
 {
   "domain": "my_vtherm_plugin",
   "name": "My VTherm Plugin",
-    "requirements": ["vtherm_api>=0.5.0"],
+    "requirements": ["vtherm_api>=0.6.0"],
   "dependencies": ["versatile_thermostat"]
 }
 ```
