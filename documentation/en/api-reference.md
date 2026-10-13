@@ -17,7 +17,7 @@ Get or create the singleton instance.
 
 #### `VThermAPI.reset_vtherm_api() -> None`
 
-Reset the singleton and clear the proportional algorithm, feature-manager factory, and inhibition-provider factory registries.
+Reset the singleton and clear the proportional-algorithm and feature-manager factory registries.
 Mainly useful in tests.
 
 ### Properties
@@ -71,27 +71,21 @@ Return registered feature manager factory names in sorted order.
 Return the registered feature manager factories, sorted by name.
 The core iterates over these factories when building a thermostat to instantiate one feature manager per eligible thermostat.
 
-#### `register_inhibition_provider_factory(factory: InterfaceInhibitionProviderFactory) -> None`
+#### `await set_inhibition(vtherm_entity_id: str, stop_underlyings: bool) -> None`
 
-Registers an inhibition provider factory (issue #2087). Unlike the other registries:
+Ask the targeted VTherm core to enter inhibition. `stop_underlyings` authorizes
+only the optional physical entry stop; the core independently closes its command
+gate, resolves the effective HVAC state, and suspends normal control.
 
-- a name already registered by **another** factory raises `ValueError` (no silent replacement);
-- registering the same factory object again is a no-op;
-- registration order is kept, because the core attaches the **first** eligible factory to a VTherm and reports later eligible ones as a conflict.
+Raises `LookupError` when no climate entity matches `vtherm_entity_id`, `TypeError`
+when the matched entity does not implement the updated core operations or when
+`stop_underlyings` is not a boolean, and `ValueError` for an empty entity ID.
 
-#### `unregister_inhibition_provider_factory(name: str) -> None`
+#### `await unset_inhibition(vtherm_entity_id: str) -> None`
 
-Removes a factory; unknown names are ignored. Before unregistering, the core and plugin must await `provider.async_stop_listening()` for every attached provider. This delivers `UNKNOWN` to the core before its callback is detached and prevents an unsafe resume.
-
-#### `get_inhibition_provider_factory(name: str) -> InterfaceInhibitionProviderFactory | None`
-
-#### `list_inhibition_provider_factories() -> list[str]`
-
-Names in registration order.
-
-#### `get_inhibition_provider_factories() -> list[InterfaceInhibitionProviderFactory]`
-
-Factories in registration order; the core iterates over them for each VTherm.
+Ask the targeted VTherm core to leave inhibition. Plugins call this only after
+they confirm their own `INACTIVE` state. The core performs the exit
+reconciliation and opens its command gate only when that operation succeeds.
 
 #### `link_to_vtherm(vtherm, plugin_vtherm_entity_id: str) -> None`
 
@@ -387,35 +381,18 @@ write_event_log(_LOGGER, thermostat, "auto_fan set to high")
 
 ### Inhibition (issue #2087)
 
-Module `vtherm_api.inhibition`, all names re-exported from `vtherm_api`.
+`VThermAPI` exposes only two inhibition operations:
 
-A plugin detects an external condition and reports a **confirmed** status per VTherm. While the status is `ACTIVE`, or an attached provider is `UNKNOWN`, the VTherm core withdraws control of its underlyings: effective HVAC `OFF` (reason `hvac_off_inhibition`), no regulation, TPI or repair, and at most one physical stop on entry, only with policy `TURN_OFF`. On a confirmed `INACTIVE`, the core reconciles once from the current requested state. The provider never commands the VTherm or its underlyings.
+- `await api.set_inhibition(vtherm_entity_id, stop_underlyings)`;
+- `await api.unset_inhibition(vtherm_entity_id)`.
 
-| Name                             | Kind             | Values / members                                                                    |
-| -------------------------------- | ---------------- | ----------------------------------------------------------------------------------- |
-| `InhibitionStatus`               | `StrEnum`        | `ACTIVE="active"`, `INACTIVE="inactive"`, `UNKNOWN="unknown"`                       |
-| `InhibitionStopPolicy`           | `StrEnum`        | `TURN_OFF="turn_off"` (default, safe fallback), `DO_NOT_TURN_OFF="do_not_turn_off"` |
-| `DEFAULT_INHIBITION_STOP_POLICY` | constant         | `InhibitionStopPolicy.TURN_OFF`                                                     |
-| `InhibitionTransition`           | frozen dataclass | `provider_name`, `new_status`, `old_status`, `stop_policy`, `timestamp`, `sequence` |
-| `InhibitionTransitionCallback`   | type             | `Callable[[InhibitionTransition], Awaitable[None]]`                                 |
-| `InhibitionThermostatView`       | frozen dataclass | `entity_id`, `name`, `unique_id` only; no VTherm command methods                    |
+The target is a VTherm climate entity implementing the core operations
+`async_set_inhibition(bool)` and `async_unset_inhibition()`. The API directly
+delegates to those operations; it does not expose a Home Assistant service,
+provider, factory, callback, status, policy, or source configuration.
 
-#### InterfaceInhibitionProviderFactory
-
-- `name -> str`: stable, non-empty.
-- `supports(thermostat: InterfaceInhibitionThermostatView) -> bool`: pure and synchronous. The core must pass an `InhibitionThermostatView`, not the full VTherm runtime. An exception is a failing candidate (logged, VTherm `UNKNOWN`), never a silent `False`.
-- `create(thermostat) -> InterfaceInhibitionProvider`: one provider bound to one VTherm.
-
-#### InterfaceInhibitionProvider
-
-- `name`, `status`, `physical_stop_policy` (properties).
-- `post_init(entry_infos)`, `async_start_listening()`, `async_stop_listening()`, `restore_state(old_state)`.
-- `async_refresh_state() -> InhibitionStatus`: re-evaluate and return the confirmed status.
-- `register_transition_callback(callback) -> CALLBACK_TYPE`: returns the remover.
-
-Rules for providers:
-
-- publish only confirmed states, after the plugin's own delays; never a raw value or a running debounce;
-- never convert `UNKNOWN` into `ACTIVE` or `INACTIVE`;
-- `async_stop_listening()` reports `UNKNOWN` to and awaits every callback before detaching them; the core must await it before unregistering the factory or its callback;
-- `physical_stop_policy` returns `TURN_OFF` when the option is unset or invalid.
+An inhibition plugin owns its sources, delays, bypass, lifecycle, business
+persistence, and `ACTIVE` / `INACTIVE` / `UNKNOWN` status. It calls
+`set_inhibition` for `ACTIVE` and `UNKNOWN`, then calls `unset_inhibition` only
+after it confirms `INACTIVE`. The core owns the effective `OFF` state, command
+gate, entry stop, and exit reconciliation.

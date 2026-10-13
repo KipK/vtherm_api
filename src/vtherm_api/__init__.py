@@ -10,17 +10,6 @@ from .interfaces import (
     InterfaceThermostatRuntime,
     ValveDiagnosticState,
 )
-from .inhibition import (
-    DEFAULT_INHIBITION_STOP_POLICY,
-    InhibitionThermostatView,
-    InhibitionStatus,
-    InhibitionStopPolicy,
-    InhibitionTransition,
-    InhibitionTransitionCallback,
-    InterfaceInhibitionProvider,
-    InterfaceInhibitionProviderFactory,
-    InterfaceInhibitionThermostatView,
-)
 from .log_collector import (
     VThermLogEntry,
     VThermLogHandler,
@@ -32,21 +21,12 @@ from .log_collector import (
 from .plugin_climate import PluginClimate
 from .vtherm_api import VThermAPI
 
-__version__ = "0.6.0"
+__version__ = "0.6.1"
 
 __all__ = [
-    "DEFAULT_INHIBITION_STOP_POLICY",
-    "InhibitionThermostatView",
-    "InhibitionStatus",
-    "InhibitionStopPolicy",
-    "InhibitionTransition",
-    "InhibitionTransitionCallback",
     "InterfaceCycleScheduler",
     "InterfaceFeatureManager",
     "InterfaceFeatureManagerFactory",
-    "InterfaceInhibitionProvider",
-    "InterfaceInhibitionProviderFactory",
-    "InterfaceInhibitionThermostatView",
     "InterfacePropAlgorithmFactory",
     "InterfacePropAlgorithmHandler",
     "InterfaceThermostat",

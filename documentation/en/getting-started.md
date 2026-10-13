@@ -10,7 +10,7 @@ Add `vtherm_api` as a dependency in your integration's `manifest.json`:
 {
   "domain": "my_vtherm_plugin",
   "name": "My VTherm Plugin",
-    "requirements": ["vtherm_api>=0.6.0"],
+    "requirements": ["vtherm_api>=0.6.1"],
   "dependencies": ["versatile_thermostat"]
 }
 ```
@@ -43,15 +43,9 @@ All main classes and interfaces are exported from the package root:
 
 ```python
 from vtherm_api import (
-  InhibitionStatus,
-  InhibitionStopPolicy,
-  InhibitionThermostatView,
     InterfaceCycleScheduler,
     InterfaceFeatureManager,
     InterfaceFeatureManagerFactory,
-  InterfaceInhibitionProvider,
-  InterfaceInhibitionProviderFactory,
-  InterfaceInhibitionThermostatView,
     InterfacePropAlgorithmFactory,
     InterfacePropAlgorithmHandler,
     InterfaceThermostat,
@@ -93,7 +87,8 @@ async def async_unload_entry(hass, entry) -> bool:
 - `api.register_prop_algorithm(...)`: register a proportional algorithm factory
 - `api.register_manager(...)`: register a single feature manager instance across existing VTherm entities
 - `api.register_feature_manager(...)`: register a feature manager factory instantiated once per eligible thermostat
-- `api.register_inhibition_provider_factory(...)`: register an inhibition-provider factory; the core passes it an immutable `InhibitionThermostatView` and awaits provider shutdown before unregistering it
+- `await api.set_inhibition(vtherm_entity_id, stop_underlyings)`: ask one VTherm core to enter inhibition
+- `await api.unset_inhibition(vtherm_entity_id)`: ask one VTherm core to reconcile and leave inhibition
 
 ## Real-world usage patterns
 
