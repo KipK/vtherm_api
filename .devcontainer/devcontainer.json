@@ -6,6 +6,8 @@
     "remoteUser": "vscode",
     "mounts": [
         "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached",
+        // The common agents directory
+        "source=/Users/jmcollin/.copilot/agents,target=/home/vscode/.copilot/agents,type=bind",
     ],
     "customizations": {
         "vscode": {
