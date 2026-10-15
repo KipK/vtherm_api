@@ -15,6 +15,10 @@ def _package_metadata_version() -> str:
     return distribution("vtherm_api").version
 
 
+def test_package_version_is_0_7_0() -> None:
+    assert vtherm_api.__version__ == "0.7.0"
+
+
 def test_package_exports_algorithm_plugin_api() -> None:
     assert vtherm_api.VThermAPI is not None
     assert vtherm_api.PluginClimate is not None
@@ -25,6 +29,11 @@ def test_package_exports_algorithm_plugin_api() -> None:
     assert vtherm_api.InterfacePropAlgorithmFactory is not None
     assert vtherm_api.InterfaceFeatureManager is not None
     assert vtherm_api.InterfaceFeatureManagerFactory is not None
+    assert vtherm_api.InterfaceCommandReceiptScheduler is not None
+    assert vtherm_api.AppliedCommandReceipt is not None
+    assert vtherm_api.CommandReceiptKind is not None
+    assert vtherm_api.CommandAlteration is not None
+    assert vtherm_api.CommandReceiptCallback is not None
     assert vtherm_api.VThermLogger is not None
     assert vtherm_api.VThermLogHandler is not None
     assert vtherm_api.VThermLogEntry is not None
