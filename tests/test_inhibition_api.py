@@ -130,3 +130,56 @@ def test_legacy_provider_surface_is_not_exported() -> None:
         "get_inhibition_provider_factories",
     ):
         assert not hasattr(VThermAPI, method)
+
+class StartingInhibitionThermostat(FakeInhibitionThermostat):
+    """A core exposing whether it has restored its inhibition state at startup."""
+
+    def __init__(self, started: bool, entity_id: str = "climate.office") -> None:
+        super().__init__(entity_id)
+        self.is_inhibition_started = started
+
+
+def test_is_inhibition_started_reads_the_core(api: VThermAPI) -> None:
+    """The facade reports the core's startup state."""
+    thermostat = StartingInhibitionThermostat(started=False)
+    api.hass.data["climate"].entities.append(thermostat)
+
+    assert api.is_inhibition_started("climate.office") is False
+    thermostat.is_inhibition_started = True
+    assert api.is_inhibition_started("climate.office") is True
+
+
+def test_is_inhibition_started_true_for_a_core_without_the_state(api: VThermAPI) -> None:
+    """A core that does not expose the state accepts the operations at any time."""
+    api.hass.data["climate"].entities.append(FakeInhibitionThermostat())
+
+    assert api.is_inhibition_started("climate.office") is True
+
+
+def test_is_inhibition_started_target_errors(api: VThermAPI) -> None:
+    """Missing or unsupported targets raise like the operations."""
+    with pytest.raises(ValueError):
+        api.is_inhibition_started("")
+    with pytest.raises(LookupError):
+        api.is_inhibition_started("climate.missing")
+    api.hass.data["climate"].entities.append(SimpleNamespace(entity_id="climate.other"))
+    with pytest.raises(TypeError):
+        api.is_inhibition_started("climate.other")
+
+
+@pytest.mark.asyncio
+async def test_not_started_error_is_raised_unchanged(api: VThermAPI) -> None:
+    """The core's InhibitionNotStartedError reaches the plugin unchanged."""
+    thermostat = FakeInhibitionThermostat()
+    thermostat.async_set_inhibition.side_effect = vtherm_api.InhibitionNotStartedError("not started")
+    api.hass.data["climate"].entities.append(thermostat)
+
+    with pytest.raises(vtherm_api.InhibitionNotStartedError):
+        await api.set_inhibition("climate.office", stop_underlyings=True)
+
+
+def test_not_started_error_is_a_home_assistant_error() -> None:
+    """Plugins can catch it as a HomeAssistantError."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    assert issubclass(vtherm_api.InhibitionNotStartedError, HomeAssistantError)

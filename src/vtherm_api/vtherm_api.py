@@ -154,6 +154,9 @@ class VThermAPI:
         ``stop_underlyings`` only authorizes the unique entry stop. The core
         owns all other inhibition state, including command gating and the
         effective HVAC calculation.
+
+        Raises ``InhibitionNotStartedError`` while the VTherm has not restored
+        its inhibition state at startup (see ``is_inhibition_started``).
         """
         if not isinstance(stop_underlyings, bool):
             raise TypeError("stop_underlyings must be a bool")
@@ -167,9 +170,26 @@ class VThermAPI:
         Plugins must call this operation only after they have confirmed their
         own inactive state. The core keeps the command gate closed until its
         exit reconciliation finishes.
+
+        Raises ``InhibitionNotStartedError`` while the VTherm has not restored
+        its inhibition state at startup (see ``is_inhibition_started``).
         """
         thermostat = self._get_inhibition_thermostat(vtherm_entity_id)
         await thermostat.async_unset_inhibition()
+
+    def is_inhibition_started(self, vtherm_entity_id: str) -> bool:
+        """Return True once the targeted VTherm accepts the inhibition operations.
+
+        A VTherm restores its inhibition state at the very beginning of its
+        startup; before that, ``set_inhibition`` and ``unset_inhibition`` raise
+        ``InhibitionNotStartedError``. A plugin checks this before calling and
+        checks again later (for example at the VTherm's next state change).
+        A core that does not expose this state accepts the operations at any
+        time and is reported started. Raises like ``set_inhibition`` when the
+        target is missing or does not support inhibition.
+        """
+        thermostat = self._get_inhibition_thermostat(vtherm_entity_id)
+        return getattr(thermostat, "is_inhibition_started", True) is not False
 
     def _get_inhibition_thermostat(self, vtherm_entity_id: str):
         """Return the core implementing the minimal inhibition operations."""

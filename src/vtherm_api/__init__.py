@@ -10,6 +10,7 @@ from .interfaces import (
     InterfaceThermostatRuntime,
     ValveDiagnosticState,
 )
+from .inhibition import InhibitionNotStartedError
 from .log_collector import (
     VThermLogEntry,
     VThermLogHandler,
@@ -21,9 +22,10 @@ from .log_collector import (
 from .plugin_climate import PluginClimate
 from .vtherm_api import VThermAPI
 
-__version__ = "0.6.1"
+__version__ = "0.6.2"
 
 __all__ = [
+    "InhibitionNotStartedError",
     "InterfaceCycleScheduler",
     "InterfaceFeatureManager",
     "InterfaceFeatureManagerFactory",

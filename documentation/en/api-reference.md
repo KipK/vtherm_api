@@ -81,11 +81,29 @@ Raises `LookupError` when no climate entity matches `vtherm_entity_id`, `TypeErr
 when the matched entity does not implement the updated core operations or when
 `stop_underlyings` is not a boolean, and `ValueError` for an empty entity ID.
 
+Raises `InhibitionNotStartedError` while the VTherm has not restored its
+inhibition state at startup; nothing is changed (see `is_inhibition_started`).
+
 #### `await unset_inhibition(vtherm_entity_id: str) -> None`
 
 Ask the targeted VTherm core to leave inhibition. Plugins call this only after
 they confirm their own `INACTIVE` state. The core performs the exit
 reconciliation and opens its command gate only when that operation succeeds.
+
+Raises `InhibitionNotStartedError` while the VTherm has not restored its
+inhibition state at startup; nothing is changed. Other errors are raised like
+`set_inhibition`, plus the core's error when the exit reconciliation fails.
+
+#### `is_inhibition_started(vtherm_entity_id: str) -> bool`
+
+Return `True` once the targeted VTherm accepts `set_inhibition` and
+`unset_inhibition`. A VTherm restores its inhibition state at the very
+beginning of its startup; before that, both operations raise
+`InhibitionNotStartedError`. A plugin checks this before calling, and checks
+again later (for example at the VTherm's next state change) while it is
+`False`. A core that does not expose this state accepts the operations at any
+time and is reported started. Raises like `set_inhibition` when the target is
+missing or does not support inhibition.
 
 #### `link_to_vtherm(vtherm, plugin_vtherm_entity_id: str) -> None`
 
@@ -381,14 +399,18 @@ write_event_log(_LOGGER, thermostat, "auto_fan set to high")
 
 ### Inhibition (issue #2087)
 
-`VThermAPI` exposes only two inhibition operations:
+`VThermAPI` exposes two inhibition operations and one check:
 
 - `await api.set_inhibition(vtherm_entity_id, stop_underlyings)`;
-- `await api.unset_inhibition(vtherm_entity_id)`.
+- `await api.unset_inhibition(vtherm_entity_id)`;
+- `api.is_inhibition_started(vtherm_entity_id)`: `True` once the VTherm has
+  restored its inhibition state at startup. Before that, both operations raise
+  `InhibitionNotStartedError` (exported by `vtherm_api`) and change nothing.
 
 The target is a VTherm climate entity implementing the core operations
-`async_set_inhibition(bool)` and `async_unset_inhibition()`. The API directly
-delegates to those operations; it does not expose a Home Assistant service,
+`async_set_inhibition(bool)` and `async_unset_inhibition()`, and optionally
+the boolean property `is_inhibition_started`. The API directly delegates to
+those operations; it does not expose a Home Assistant service,
 provider, factory, callback, status, policy, or source configuration.
 
 An inhibition plugin owns its sources, delays, bypass, lifecycle, business
