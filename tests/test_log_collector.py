@@ -375,6 +375,60 @@ class TestVThermLogger:
         get_vtherm_logger(parent_name)
         assert other.parent is other_parent
 
+    @pytest.mark.parametrize("logger_factory", [logging.getLogger, get_vtherm_logger])
+    @pytest.mark.parametrize("parent_kind", ["unrelated", "prefix"])
+    def test_wrap_preserves_custom_parent(self, logger_factory, parent_kind):
+        """A shorter parent name must not be mistaken for a dotted ancestor."""
+        parent_name = self._unique_name("custom_parent")
+        logging.getLogger(parent_name)
+        custom_name = self._unique_name(
+            "x") if parent_kind == "unrelated" else parent_name[:-1]
+        custom_parent = logging.getLogger(custom_name)
+        custom_parent.setLevel(logging.ERROR)
+        child = logger_factory(parent_name + ".child")
+        child.parent = custom_parent
+
+        parent = get_vtherm_logger(parent_name)
+        parent.setLevel(logging.WARNING)
+
+        assert child.parent is custom_parent
+        assert child.getEffectiveLevel() == logging.ERROR
+
+    def test_wrap_preserves_detached_child(self):
+        """Wrapping a nominal parent must not attach an explicitly detached child."""
+        parent_name = self._unique_name("detached")
+        logging.getLogger(parent_name)
+        child = get_vtherm_logger(parent_name + ".child")
+        child.parent = None
+
+        get_vtherm_logger(parent_name)
+
+        assert child.parent is None
+
+    def test_wrap_preserves_intermediate_parent(self):
+        """A grandchild must keep its nearest parent and inherit its level."""
+        parent_name = self._unique_name("intermediate")
+        intermediate = get_vtherm_logger(parent_name + ".middle")
+        intermediate.setLevel(logging.ERROR)
+        child = get_vtherm_logger(parent_name + ".middle.child")
+
+        parent = get_vtherm_logger(parent_name)
+        parent.setLevel(logging.WARNING)
+
+        assert intermediate.parent is parent
+        assert child.parent is intermediate
+        assert child.getEffectiveLevel() == logging.ERROR
+
+    def test_wrap_repoints_child_parented_to_root(self):
+        """A wrapped child linked to root must follow its newly wrapped parent."""
+        parent_name = self._unique_name("root").rsplit(".", 1)[-1]
+        child = get_vtherm_logger(parent_name + ".child")
+        assert child.parent is logging.getLogger()
+
+        parent = get_vtherm_logger(parent_name)
+
+        assert child.parent is parent
+
 
 # ---------------------------------------------------------------------------
 # Unit tests: format helpers

@@ -174,7 +174,9 @@ def get_vtherm_logger(name: str) -> VThermLogger:
         if not cname.startswith(prefix):
             continue
         parent = candidate.parent
-        if parent is std or parent is None or len(parent.name) < len(name):
+        if parent is std or parent is logging.root or (
+            parent is not None and name.startswith(parent.name + ".")
+        ):
             candidate.parent = vl  # type: ignore[assignment]
     return vl
 
