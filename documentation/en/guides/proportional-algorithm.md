@@ -176,6 +176,9 @@ from vtherm_api import AppliedCommandReceipt, InterfaceCommandReceiptScheduler
 
 
 class MyAlgorithmHandler:
+    def __init__(self) -> None:
+        self._request_id = 0
+
     def on_scheduler_ready(self, scheduler) -> None:
         self._receipts = isinstance(scheduler, InterfaceCommandReceiptScheduler)
         if self._receipts:
