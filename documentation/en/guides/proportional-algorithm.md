@@ -167,6 +167,35 @@ The `vtherm_smartpi` integration demonstrates a few important patterns that are 
 - `async_underlying_entity_turn_off()` is useful when your logic decides VTherm must force the underlying device off
 - `async_control_heating()` can be re-triggered by your own timer between normal cycle boundaries
 
+## Attributing the applied command (optional)
+
+The scheduler can apply a value that differs from the requested `on_percent` (minimal on/off delays for a switch, a valve position held back by the valve resolver). When the scheduler implements `InterfaceCommandReceiptScheduler`, the handler can tag its requests and receive the command that was really applied:
+
+```python
+from vtherm_api import AppliedCommandReceipt, InterfaceCommandReceiptScheduler
+
+
+class MyAlgorithmHandler:
+    def on_scheduler_ready(self, scheduler) -> None:
+        self._receipts = isinstance(scheduler, InterfaceCommandReceiptScheduler)
+        if self._receipts:
+            self._remove_receipt = scheduler.register_command_receipt_callback(self._on_receipt)
+
+    async def _start(self, scheduler, mode, on_percent, force) -> None:
+        if self._receipts:
+            self._request_id += 1
+            await scheduler.start_cycle(mode, on_percent, force=force, request_id=self._request_id)
+        else:
+            await scheduler.start_cycle(mode, on_percent, force=force)
+
+    async def _on_receipt(self, receipt: AppliedCommandReceipt) -> None:
+        if receipt.request_id is None or receipt.alterations:
+            return
+        # receipt.applied_on_percent is the actuator power applied for request receipt.request_id
+```
+
+The extension is optional: `InterfaceCycleScheduler` is unchanged, and a scheduler without the extension must not receive `request_id`. See [Command receipts](../api-reference.md#command-receipts) for the full contract.
+
 ## Reading thermostat runtime state
 
 Inside your handler, these runtime values are commonly used:

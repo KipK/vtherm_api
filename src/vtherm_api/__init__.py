@@ -1,5 +1,12 @@
 """Public package for the Versatile Thermostat API."""
 
+from .command_receipt import (
+    AppliedCommandReceipt,
+    CommandAlteration,
+    CommandReceiptCallback,
+    CommandReceiptKind,
+    InterfaceCommandReceiptScheduler,
+)
 from .interfaces import (
     InterfaceCycleScheduler,
     InterfaceFeatureManager,
@@ -22,10 +29,15 @@ from .log_collector import (
 from .plugin_climate import PluginClimate
 from .vtherm_api import VThermAPI
 
-__version__ = "0.6.2"
+__version__ = "0.7.0"
 
 __all__ = [
+    "AppliedCommandReceipt",
+    "CommandAlteration",
+    "CommandReceiptCallback",
+    "CommandReceiptKind",
     "InhibitionNotStartedError",
+    "InterfaceCommandReceiptScheduler",
     "InterfaceCycleScheduler",
     "InterfaceFeatureManager",
     "InterfaceFeatureManagerFactory",

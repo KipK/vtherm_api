@@ -341,6 +341,64 @@ Contract exposed by the VTherm cycle scheduler.
 | `start_cycle(hvac_mode, on_percent, force)` | `async (Any, float, bool) -> None` | Start or update a cycle       |
 | `cancel_cycle()`                            | `async () -> None`                 | Cancel the current cycle      |
 
+### Command receipts
+
+Module `vtherm_api.command_receipt`, all names re-exported from `vtherm_api`.
+
+An optional extension of `InterfaceCycleScheduler`. `InterfaceCycleScheduler` itself is unchanged: a scheduler that does not implement the extension still satisfies it, and an algorithm plugin that ignores the extension keeps working as before.
+
+A plugin tags each request with an opaque `request_id`; the scheduler echoes it in a receipt for the command it really applies, with the applied actuator power and the reasons why it differs from the request.
+
+| Name                               | Kind             | Values / members                                                                                                                                                                                            |
+| ---------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CommandReceiptKind`               | `StrEnum`        | `CYCLE_START="cycle_start"`, `UPDATE="update"`                                                                                                                                                              |
+| `CommandAlteration`                | `StrEnum`        | `MIN_ON_OFF="min_on_off"` (switch), `VALVE_RETAINED="valve_retained"` (valve)                                                                                                                               |
+| `AppliedCommandReceipt`            | frozen dataclass | `kind`, `request_id`, `hvac_mode`, `requested_on_percent`, `applied_on_percent`, `on_time_sec`, `off_time_sec`, `cycle_duration_sec`, `cycle_start_monotonic`, `monotonic`, `is_repeat`, `alterations`       |
+| `CommandReceiptCallback`           | type             | `Callable[[AppliedCommandReceipt], Awaitable[None]]`                                                                                                                                                        |
+| `InterfaceCommandReceiptScheduler` | runtime protocol | extends `InterfaceCycleScheduler` with `is_valve_mode`, `register_command_receipt_callback(callback)` and `start_cycle(hvac_mode, on_percent, force=False, *, request_id=None)`                              |
+
+`AppliedCommandReceipt` fields:
+
+| Field                   | Type                          | Description                                                                                                          |
+| ----------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `kind`                  | `CommandReceiptKind`          | Origin of the receipt                                                                                                |
+| `request_id`            | `int` or `None`                  | Echo of the `request_id` of `start_cycle`; `None` for an internal scheduler path or an untagged request             |
+| `hvac_mode`             | `str`                         | HVAC mode of the applied command                                                                                     |
+| `requested_on_percent`  | `float`                       | Request received for this `request_id`, clamped to [0, 1]                                                            |
+| `applied_on_percent`    | `float`                       | Actuator power applied: `on_time / cycle_duration` for a switch, the retained ratio for a valve                      |
+| `on_time_sec`           | `int`                         | On time of the cycle in seconds (diagnostic for a valve)                                                             |
+| `off_time_sec`          | `int`                         | Off time of the cycle in seconds (diagnostic for a valve)                                                            |
+| `cycle_duration_sec`    | `float`                       | Master cycle duration in seconds                                                                                     |
+| `cycle_start_monotonic` | `float` or `None`                | `time.monotonic()` at the start of the current master cycle; `None` for an `UPDATE` outside a cycle                  |
+| `monotonic`             | `float`                       | `time.monotonic()` at the emission of the receipt                                                                    |
+| `is_repeat`             | `bool`                        | `True` for an automatic restart at the end of a master cycle                                                         |
+| `alterations`           | `frozenset[CommandAlteration]` | Reasons why applied differs from requested; empty when only the normal quantization applies                         |
+
+Rules:
+
+- **Tagging.** The plugin passes `request_id=` to `start_cycle`. The scheduler never interprets it: it stores it with the pending and the active request and echoes it in the receipt of the command it really applies. When the scheduler applies an older request than the latest one received, the receipt carries the older identifier.
+- **`CYCLE_START`.** Emitted for each master-cycle start, including the automatic restart at the end of a master cycle (`is_repeat=True`, same `request_id`). It is emitted right after the cycle start callbacks and before the actuation.
+- **`UPDATE`.** Emitted for each valve `start_cycle` that goes through the running-cycle path, even when the value is unchanged, and for each deferred valve update (`request_id=None`).
+- **No receipt** for a switch request stored as pending during an active cycle; its receipt is emitted when it is applied.
+- **Sticky alterations.** Alterations are sticky per `request_id`: an automatic restart inherits the alterations of the cycle that first applied the request.
+- **Not covered.** Cancellation, HVAC OFF and power shedding are reported by the cycle end callback (`elapsed_ratio < 1`), not by receipts.
+- **Callbacks** are coroutines and are awaited. An exception raised by a callback is logged and does not break the cycle.
+- **Capability detection.** Check `isinstance(scheduler, InterfaceCommandReceiptScheduler)` (or `hasattr(scheduler, "register_command_receipt_callback")`) before passing `request_id`, since a scheduler without the extension does not accept it.
+- The receipt callback is registered separately from the cycle start callback, whose keyword signature is unchanged.
+
+```python
+from vtherm_api import AppliedCommandReceipt, InterfaceCommandReceiptScheduler
+
+
+def on_scheduler_ready(self, scheduler) -> None:
+    if isinstance(scheduler, InterfaceCommandReceiptScheduler):
+        self._remove_receipt = scheduler.register_command_receipt_callback(self._on_receipt)
+
+
+async def _on_receipt(self, receipt: AppliedCommandReceipt) -> None:
+    ...
+```
+
 ---
 
 ## Constants and EventType
