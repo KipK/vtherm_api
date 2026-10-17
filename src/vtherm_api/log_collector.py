@@ -137,6 +137,15 @@ def get_vtherm_logger(name: str) -> VThermLogger:
     Calls logging.getLogger(name) first so that the Manager sets up the parent
     chain correctly, then swaps the entry for a VThermLogger while preserving
     all attributes (level, handlers, parent, propagate, disabled).
+
+    After the swap, existing descendant loggers are re-parented onto the new
+    VThermLogger.  Replacing the Manager's dict entry directly bypasses
+    ``Manager._fixupChildren``, so without this step any logger created BEFORE
+    its parent was wrapped keeps a ``parent`` reference to the replaced
+    (orphaned) Logger — or to an ancestor higher up if the parent did not
+    exist yet — and silently stops following level changes made through
+    ``logging.getLogger(name).setLevel(...)`` (which is exactly what Home
+    Assistant's ``logger.set_level`` service and the frontend do at runtime).
     """
     manager = logging.Logger.manager
     existing = manager.loggerDict.get(name)
@@ -152,6 +161,21 @@ def get_vtherm_logger(name: str) -> VThermLogger:
     vl.handlers = std.handlers
     vl.disabled = std.disabled
     manager.loggerDict[name] = vl
+
+    # Re-parent existing descendants (what Manager._fixupChildren would have
+    # done had the logger been created through the Manager).  A descendant
+    # needs re-pointing when its current parent is the Logger we just
+    # replaced, or an ancestor ABOVE *name* (i.e. the descendant was created
+    # before *name* existed and the Manager linked it further up the tree).
+    prefix = name + "."
+    for cname, candidate in list(manager.loggerDict.items()):
+        if not isinstance(candidate, logging.Logger) or candidate is vl:
+            continue
+        if not cname.startswith(prefix):
+            continue
+        parent = candidate.parent
+        if parent is std or parent is None or len(parent.name) < len(name):
+            candidate.parent = vl  # type: ignore[assignment]
     return vl
 
 

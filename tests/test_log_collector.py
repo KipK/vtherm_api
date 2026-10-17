@@ -322,6 +322,59 @@ class TestVThermLogger:
         h = VThermLogHandler()
         assert getattr(VThermLogger, "_collector") is h
 
+    def test_wrap_repoints_existing_plain_children(self):
+        """Wrapping a parent AFTER a plain child exists must re-parent the child.
+
+        Regression test: get_vtherm_logger replaced the Manager's dict entry
+        directly, so a child logger created before the wrap kept its ``parent``
+        reference to the replaced (now orphaned) standard Logger and stopped
+        following level changes made through ``logging.getLogger(parent_name)``.
+        """
+        parent_name = self._unique_name("repoint_plain")
+        child = logging.getLogger(parent_name + ".child")
+        parent = get_vtherm_logger(parent_name)
+        assert child.parent is parent
+
+    def test_wrap_repoints_existing_wrapped_children(self):
+        """Same as above when the child is itself a VThermLogger (module import order)."""
+        parent_name = self._unique_name("repoint_wrapped")
+        child = get_vtherm_logger(parent_name + ".child")
+        parent = get_vtherm_logger(parent_name)
+        assert child.parent is parent
+
+    def test_runtime_set_level_reaches_children_created_before_wrap(self):
+        """The user-visible symptom: HA's ``logger.set_level`` on the component
+        namespace must lower/raise the effective level of ALL module loggers,
+        including those created before their parent was wrapped.
+
+        ``logging.getLogger(name).setLevel(...)`` is exactly what Home
+        Assistant's ``logger`` integration does at runtime.
+        """
+        # Home Assistant runs the root logger at INFO; pytest's default is
+        # WARNING, which would mask the bug (a child that falls back to the
+        # root would coincidentally report WARNING).
+        root = logging.getLogger()
+        saved_root_level = root.level
+        root.setLevel(logging.INFO)
+        try:
+            parent_name = self._unique_name("set_level")
+            child = get_vtherm_logger(parent_name + ".module")
+            get_vtherm_logger(parent_name)
+
+            logging.getLogger(parent_name).setLevel(logging.WARNING)
+
+            assert child.getEffectiveLevel() == logging.WARNING
+        finally:
+            root.setLevel(saved_root_level)
+
+    def test_wrap_does_not_repoint_unrelated_loggers(self):
+        """Re-parenting must only affect loggers that referenced the replaced object."""
+        parent_name = self._unique_name("no_collateral")
+        other = logging.getLogger(self._unique_name("unrelated") + ".child")
+        other_parent = other.parent
+        get_vtherm_logger(parent_name)
+        assert other.parent is other_parent
+
 
 # ---------------------------------------------------------------------------
 # Unit tests: format helpers
